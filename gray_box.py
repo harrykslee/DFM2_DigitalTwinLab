@@ -9,7 +9,8 @@ Workflow
 4. Reveal parameters calculated with the 28.3/63.2 percent reaction-curve
    method.
 5. Compare the student and calculated FOPDT models against both experiments.
-6. Export only the calculated-parameter predictions for ``test_set.csv``.
+6. After the final comparison plot closes, choose which parameter set to save
+   for later model comparisons and PID tuning.
 
 The model is
 
@@ -378,8 +379,16 @@ def obtain_student_parameters(args: argparse.Namespace) -> FOPDTParameters:
                 "and --student-theta"
             )
         parameters = FOPDTParameters(*supplied)
-        if parameters.gain <= 0.0 or parameters.tau <= 0.0 or parameters.theta < 0.0:
-            raise ValueError("Student K and tau must be positive; theta cannot be negative")
+        if (
+            not all(np.isfinite(value) for value in supplied)
+            or parameters.gain <= 0.0
+            or parameters.tau <= 0.0
+            or parameters.theta < 0.0
+        ):
+            raise ValueError(
+                "Student K and tau must be finite and positive; "
+                "theta must be finite and non-negative"
+            )
         return parameters
 
     print("\nEnter your estimates from the step-response plot.")
@@ -550,28 +559,47 @@ def plot_model_comparisons(results: list[dict[str, object]]) -> None:
     plt.show()
 
 
-def export_test_predictions(test_result: dict[str, object]) -> None:
-    """Export only the calculated-parameter prediction for the PID test."""
+def prompt_model_choice() -> str:
+    """Let the student choose which fitted curve to use in later activities."""
+    print("\nWhich gray-box model should be saved for model comparison and PID tuning?")
+    while True:
+        try:
+            answer = input("Enter 'student' or 'calculated': ").strip().lower()
+        except EOFError as exc:
+            raise RuntimeError(
+                "No interactive input is available. Supply --save-model "
+                "student or --save-model calculated on the command line."
+            ) from exc
+        if answer in ("student", "s"):
+            return "student"
+        if answer in ("calculated", "c"):
+            return "calculated"
+        print("Please enter 'student' or 'calculated'.")
+
+
+def export_test_predictions(test_result: dict[str, object], source: str) -> None:
+    """Export the selected parameter set's prediction for the PID test."""
     PREDICTION_DIR.mkdir(parents=True, exist_ok=True)
     output = pd.DataFrame(
         {
             TIME_COLUMN: test_result["time"],
             "Measured_Temp": test_result["measured"],
-            "GrayBox_Temp": test_result["calculated_prediction"],
+            "GrayBox_Temp": test_result[f"{source}_prediction"],
         }
     )
     output.to_csv(PREDICTION_PATH, index=False)
-    print(f"\nSaved calculated test-set predictions to: {PREDICTION_PATH}")
+    print(f"\nSaved {source} test-set predictions to: {PREDICTION_PATH}")
 
 
-def export_calculated_model(parameters: FOPDTParameters) -> None:
-    """Save the computer-identified FOPDT model for PID tuning tools."""
+def export_selected_model(parameters: FOPDTParameters, source: str) -> None:
+    """Save the selected FOPDT parameters for the PID tuning tools."""
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     MODEL_PATH.write_text(
         json.dumps(
             {
                 "model_type": "gray_box_fopdt",
                 "version": 1,
+                "parameter_source": source,
                 "gain_C_per_percent_PWM": parameters.gain,
                 "tau_seconds": parameters.tau,
                 "theta_seconds": parameters.theta,
@@ -582,7 +610,7 @@ def export_calculated_model(parameters: FOPDTParameters) -> None:
         ),
         encoding="utf-8",
     )
-    print(f"Saved reusable calculated gray-box model to: {MODEL_PATH}")
+    print(f"Saved reusable {source} gray-box model to: {MODEL_PATH}")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -590,9 +618,14 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Identify and validate a FrED heat-block FOPDT model."
     )
-    parser.add_argument("--student-k", type=float, help="Student gain estimate, °C/% PWM")
+    parser.add_argument("--student-k", type=float, help="Student gain estimate, °C/%% PWM")
     parser.add_argument("--student-tau", type=float, help="Student time-constant estimate, s")
     parser.add_argument("--student-theta", type=float, help="Student dead-time estimate, s")
+    parser.add_argument(
+        "--save-model",
+        choices=("student", "calculated"),
+        help="Select which parameters to export without the final interactive prompt",
+    )
     parser.add_argument(
         "--no-plots",
         action="store_true",
@@ -611,8 +644,6 @@ def main() -> None:
     calculated_parameters, details = calculate_fopdt_parameters(
         step_experiment, filtered_step
     )
-    export_calculated_model(calculated_parameters)
-
     if not args.no_plots:
         print(
             "The identification plot will open first. Estimate K, tau, and theta, "
@@ -631,11 +662,16 @@ def main() -> None:
     ]
     print_error_summary(results)
 
-    test_result = next(result for result in results if result["name"] == "test_set.csv")
-    export_test_predictions(test_result)
-
     if not args.no_plots:
         plot_model_comparisons(results)
+
+    # Wait until the final plot is closed so the student can compare both
+    # curves before deciding which model future scripts should load.
+    source = args.save_model or prompt_model_choice()
+    parameters = student_parameters if source == "student" else calculated_parameters
+    test_result = next(result for result in results if result["name"] == "test_set.csv")
+    export_test_predictions(test_result, source)
+    export_selected_model(parameters, source)
 
 
 if __name__ == "__main__":

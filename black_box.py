@@ -37,6 +37,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+#########################################################################
+# TODO: Select the range of dataset to train with.
+dataset_partial = False  # Set to False to use all available training data.
+#########################################################################
+
+
 # Some Windows CPU wheels contain all required DLLs but do not load their
 # dependency chain before importing torch._C.  Keep the DLL directory handle
 # alive and preload only the three bundled libraries in dependency order.  The
@@ -72,10 +78,15 @@ MODEL_PATH = MODEL_DIR / "black_box_model.pt"
 
 # Patterns are deliberately narrow so unrelated step-response files are not
 # silently included.  test_set.csv is explicitly excluded again below.
-TRAINING_FILE_PATTERNS = (
-    "training_data*.csv",
-    "train_*.csv",
-)
+if dataset_partial:
+    TRAINING_FILE_PATTERNS = (
+        "training_data*.csv",
+    )
+else:
+    TRAINING_FILE_PATTERNS = (
+            "training_data*.csv",
+            "train_*.csv",
+        )
 
 TIME_COLUMN = "Timestamp (s)"
 TEMPERATURE_COLUMN = "Temperature (C)"
@@ -86,6 +97,8 @@ PID_OUTPUT_COLUMN = "Temperature PID output"
 MEDIAN_FILTER_SECONDS = 3.0
 MOVING_AVERAGE_SECONDS = 8.0
 
+# TODO: Vary the model hyperparameters below to explore the tradeoff.
+########################################################################################
 # Conservative defaults for a modest-sized thermal dataset.
 DEFAULT_LOOKBACK = 30
 DEFAULT_HISTORY_STRIDE = 15
@@ -94,6 +107,7 @@ DEFAULT_BATCH_SIZE = 512
 DEFAULT_LEARNING_RATE = 1.0e-3
 DEFAULT_VALIDATION_FRACTION = 0.20
 DEFAULT_RANDOM_SEED = 42
+########################################################################################
 
 
 @dataclass(frozen=True)

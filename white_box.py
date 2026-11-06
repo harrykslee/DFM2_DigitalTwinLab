@@ -18,13 +18,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
+# TODO: Fill in the physics model parameters.
+#############################################################################
 # ---------------------------------------------------------------------------
 # Physical model parameters (SI units)
 # ---------------------------------------------------------------------------
 C_TH = 50.0  # Thermal capacitance, J/K
 R_TH = 20.0  # Thermal resistance to ambient, K/W
 Q_MAX = 40.0  # Heater power at 100 percent PWM, W
+#############################################################################
 
 # Resolve paths relative to this script so it works from any working directory.
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -312,6 +314,7 @@ def main() -> None:
             "WhiteBox_Temp": test_result["predicted"],
         }
     )
+    PREDICTION_DIR.mkdir(parents=True, exist_ok=True)
     prediction_frame.to_csv(PREDICTION_PATH, index=False)
     print(f"\nSaved test-set predictions to: {PREDICTION_PATH}")
 
